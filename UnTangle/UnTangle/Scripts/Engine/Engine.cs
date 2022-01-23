@@ -1,9 +1,14 @@
 ﻿using Microsoft.Win32;
 using System;
+using System.Diagnostics;
 using System.Drawing;
 using System.Runtime.InteropServices;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Forms;
+using UnTangle.WinApi;
+using WindowsInput;
+using WindowsInput.Native;
 
 namespace UnTangle.Scripts.Engine
 {
@@ -12,6 +17,7 @@ namespace UnTangle.Scripts.Engine
         #region Variables
 
         public static bool IsHotKeyAccess;
+        private static KeyboardHook _kbdHook;
 
         #endregion
 
@@ -49,17 +55,17 @@ namespace UnTangle.Scripts.Engine
         #region Constants
 
         public const int WM_HOTKEY = 0x0312;
-        //public const int WM_COPY = 0x0301;
-        //public const int WM_PASTE = 0x0302;
+        public const int WM_COPY = 0x0301;
+        public const int WM_PASTE = 0x0302;
         //public const int WM_COPYDATA = 0x4A;
         //public const int WM_GETTEXT = 0x000D;
         //public const int EM_SETSEL = 0x00B1;
 
-        //private const int MOD_NOMOD = 0x0000;
+        private const int MOD_NOMOD = 0x0000;
         private const int MOD_ALT = 0x0001;
         private const int MOD_CTRL = 0x0002;
-        //private const int MOD_SHIFT = 0x0004;
-        //private const int MOD_WIN = 0x0008;
+        private const int MOD_SHIFT = 0x0004;
+        private const int MOD_WIN = 0x0008;
 
         #endregion
 
@@ -67,14 +73,22 @@ namespace UnTangle.Scripts.Engine
 
         public static void Hook(IntPtr Handle)
         {
-            Scripts.Engine.Engine.RegisterHotKey(Handle, 0, MOD_CTRL, (int)Keys.Q);
+            Scripts.Engine.Engine.RegisterHotKey(Handle, 0, MOD_SHIFT, (int)Keys.PageUp);
+//            Scripts.Engine.Engine.RegisterHotKey(Handle, 0, MOD_ALT, (int)Keys.Q);
             Scripts.Engine.Engine.RegisterHotKey(Handle, 1, MOD_ALT, (int)Keys.D1);
             Scripts.Engine.Engine.RegisterHotKey(Handle, 2, MOD_ALT, (int)Keys.D2);
-            Scripts.Engine.Engine.RegisterHotKey(Handle, 3, MOD_CTRL, (int)Keys.Oemtilde);
+            Scripts.Engine.Engine.RegisterHotKey(Handle, 3, MOD_SHIFT, (int)Keys.Oemtilde);
+
+            _kbdHook = new KeyboardHook();
+            _kbdHook.KeyboardEvent += ProcessKeyboardEvent;
+            _kbdHook.Start();
         }
 
         public static void Unhook(IntPtr Handle)
         {
+            _kbdHook.Stop();
+            _kbdHook.KeyboardEvent -= ProcessKeyboardEvent;
+
             for (int i = 0; i < 4; i++)
             {
                 Scripts.Engine.Engine.UnregisterHotKey(Handle, i);
@@ -135,7 +149,7 @@ namespace UnTangle.Scripts.Engine
             return true;
         }
 
-        public static bool IsAutoRun(string ExePath)
+        public static bool IsAutoRun(string exePath)
         {
             bool isAutorun = false;
 
@@ -149,7 +163,7 @@ namespace UnTangle.Scripts.Engine
 
                     foreach (var item in names)
                     {
-                        isAutorun = Reg.GetValue(item).ToString().Equals(ExePath);
+                        isAutorun = Reg.GetValue(item).ToString().Equals(exePath);
 
                         if (isAutorun)
                         {
@@ -238,52 +252,87 @@ namespace UnTangle.Scripts.Engine
             IsHotKeyAccess = true;
         }
 
-        public static void ChangeText()//IntPtr wParam, IntPtr lParam)
+        private static async void ProcessKeyboardEvent(object sender, KeyboardEventArgs e)
+        {
+            if (e.Type.Equals(KeyboardEventType.KeyUp))
+            {
+                if (e.KeyCode == Keys.Pause && LowLevelAdapter.IsKeyPressed(Keys.LShiftKey))
+                {
+                    LowLevelAdapter.ReleasePressedFnKeys();
+                    SaveClipboard();
+
+                    var isChanged = await Task.Run(ChangeText).ConfigureAwait(true);
+
+                    RestoreClipboard();
+
+                    if(isChanged)
+                        SwitchLayout();
+
+                    e.Handled = true;
+                }
+            }
+        }
+
+        public static bool ChangeText()
         {
             IsHotKeyAccess = false;
-            WindowsInput.InputSimulator _InputSimulator = new WindowsInput.InputSimulator();
+            var inputSimulator = new InputSimulator();
 
             try
             {
-                //var PointWindow = GetWindowUnderCursor();
+//                var PointWindow = GetWindowUnderCursor();
 
-                Scripts.Engine.ClipboardData.TempClipboard = Scripts.Engine.ClipboardData.GetClipboardData();
-                Scripts.Engine.ClipboardData.ClipboardClear();
-                
-                _InputSimulator.Keyboard.ModifiedKeyStroke(WindowsInput.Native.VirtualKeyCode.CONTROL, WindowsInput.Native.VirtualKeyCode.VK_C);
-                //SendMessage(hWnd: PointWindow, Msg: WM_COPY, wParam: 0, lParam: 0);
+                inputSimulator.Keyboard.ModifiedKeyStroke(VirtualKeyCode.CONTROL, VirtualKeyCode.VK_C);
+//                SendMessage(hWnd: PointWindow, Msg: WM_COPY, wParam: 0, lParam: 0);
 
                 Thread.Sleep(50);
 
-                if (Scripts.Engine.ClipboardData.GetText().Length > 0)
+                var clipboardText = ClipboardData.GetText();
+                Debug.WriteLine($"Text: {clipboardText}");
+
+                if (clipboardText.Length > 0)
                 {
                     Thread.Sleep(50);
-                    var result = TranslateText(Text: Scripts.Engine.ClipboardData.GetText());
+                    var result = TranslateText(Text: clipboardText);
 
-                    Scripts.Engine.ClipboardData.SetText(p_Text: result);
+                    ClipboardData.SetText(p_Text: result);
                     Thread.Sleep(50);
 
-                    _InputSimulator.Keyboard.ModifiedKeyStroke(WindowsInput.Native.VirtualKeyCode.CONTROL, WindowsInput.Native.VirtualKeyCode.VK_V);
+                    inputSimulator.Keyboard.ModifiedKeyStroke(VirtualKeyCode.CONTROL, VirtualKeyCode.VK_V);
 
                     //SendMessage(hWnd: PointWindow, Msg: WM_PASTE, wParam: 0, lParam: 0);
 
                     Thread.Sleep(50);
                 }
+                else
+                    return false;
 
+                IsHotKeyAccess = true;
+
+                return true;
             }
-            catch (Exception) {  }
-
-            //MessageBox.Show(lol);
-
-            Thread.Sleep(50);
-            Scripts.Engine.ClipboardData.SetClipboardData(Dictionary: Scripts.Engine.ClipboardData.TempClipboard);
-
-            Thread.Sleep(50);
-            Scripts.Engine.ClipboardData.TempClipboard.Clear();
-
-            IsHotKeyAccess = true;
+            catch (Exception)
+            {
+                return false;
+            }
         }
-        
+
+        private static void RestoreClipboard()
+        {
+            Thread.Sleep(50);
+            ClipboardData.SetClipboardData(Dictionary: ClipboardData.TempClipboard);
+
+            Thread.Sleep(50);
+            ClipboardData.TempClipboard.Clear();
+        }
+
+        private static void SaveClipboard()
+        {
+            ClipboardData.TempClipboard = ClipboardData.GetClipboardData();
+            ClipboardData.ClipboardClear();
+            Thread.Sleep(50);
+        }
+
         public static string TranslateText(string Text)
         {
             switch (ProgramProcess.ButtonSelected)
@@ -348,5 +397,11 @@ namespace UnTangle.Scripts.Engine
         }
 
         #endregion
+
+        public static void SwitchLayout()
+        {
+//            BeginNewSelection();
+            LowLevelAdapter.SetNextKeyboardLayout();
+        }
     }
 }

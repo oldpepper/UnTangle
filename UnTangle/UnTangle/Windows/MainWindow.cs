@@ -207,38 +207,41 @@ namespace UnTangle
 
         protected override void WndProc(ref Message m)
         {
-            if (m.Msg.Equals(Scripts.Engine.Engine.WM_HOTKEY) && Scripts.Engine.Engine.IsHotKeyAccess)
+            if (m.Msg.Equals(Scripts.Engine.Engine.WM_HOTKEY))
             {
-                var TipText = string.Empty;
-                var IdHook = m.WParam.ToInt32();
-
-                switch (IdHook)
+                if (Scripts.Engine.Engine.IsHotKeyAccess)
                 {
-                    case 0:
+                    var TipText = string.Empty;
+                    var IdHook = m.WParam.ToInt32();
+
+                    switch (IdHook)
+                    {
+                        case 0:
                         {
-                            Scripts.Engine.Engine.ChangeText();//wParam: m.WParam, lParam: m.LParam);
+                            Scripts.Engine.Engine.ChangeText(); //wParam: m.WParam, lParam: m.LParam);
                         }
-                        break;
-                    case 1:
+                            break;
+                        case 1:
                         {
                             TipText = ChangeMenu();
                         }
-                        break;
-                    case 2:
+                            break;
+                        case 2:
                         {
                             TipText = ChangeSubMenu();
                         }
-                        break;
-                    case 3:
+                            break;
+                        case 3:
                         {
                             Scripts.Engine.Engine.ShowChangeText();
                         }
-                        break;
-                }
+                            break;
+                    }
 
-                if (!string.IsNullOrEmpty(TipText))
-                {
-                    ShowMessageTip(Timeout: 0, TipTitle: Application.ProductName, TipText: TipText, TipIcon: ToolTipIcon.Info);
+                    if (!string.IsNullOrEmpty(TipText))
+                    {
+                        ShowMessageTip(Timeout: 0, TipTitle: Application.ProductName, TipText: TipText, TipIcon: ToolTipIcon.Info);
+                    }
                 }
             }
 

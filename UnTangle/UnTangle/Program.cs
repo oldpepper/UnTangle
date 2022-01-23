@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Windows.Forms;
+using UnTangle.Scripts.Engine;
 
 namespace UnTangle
 {
@@ -8,6 +9,7 @@ namespace UnTangle
         static internal MainWindow MainWindow;
         static internal SettingsWindow SettingsWindow;
         static internal ShowTransliteration ShowTransliteration;
+        private static KeyboardHook _kbdHook;
 
         [STAThread]
         static void Main()
